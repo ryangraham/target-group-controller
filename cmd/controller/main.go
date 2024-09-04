@@ -11,60 +11,58 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 
+	// Import your custom API package
 	targetgroupv1 "github.com/ryangraham/target-group-controller/pkg/api/v1"
+
+	// Import your controller logic
 	"github.com/ryangraham/target-group-controller/pkg/controllers"
 )
 
-var (
-	// Define the global scheme
-	scheme = runtime.NewScheme()
-)
-
-func init() {
-	// Register Kubernetes built-in types
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	// Register custom types (TargetGroupBinding)
-	utilruntime.Must(targetgroupv1.AddToScheme(scheme))
-}
-
 func main() {
-	// Set up a new logger using Zap (a popular logging library)
+	// Set up logging with Zap (a popular logging library)
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	// Load the AWS configuration
+	// Load AWS configuration (region, credentials, etc.)
 	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "unable to load AWS SDK config, %v", err)
+		fmt.Fprintf(os.Stderr, "Unable to load AWS config: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Create the ELBv2 client using the AWS SDK v2
 	elbClient := elasticloadbalancingv2.NewFromConfig(awsCfg)
 
-	// Create a new controller manager, which will manage controllers and start them when ready
+	// Create a new runtime Scheme
+	scheme := runtime.NewScheme()
+
+	// Create a new Manager to manage the controllers
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: scheme,
+		Scheme: scheme, // Attach the created scheme
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "unable to start manager, %v", err)
+		fmt.Fprintf(os.Stderr, "Unable to create manager: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Set up the TargetGroupBinding controller with the AWS SDK client and the controller manager
+	// Register the TargetGroupBinding API types with the manager's scheme
+	if err := targetgroupv1.AddToScheme(mgr.GetScheme()); err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to register TargetGroupBinding scheme: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Set up the TargetGroupBinding controller with the manager and AWS ELBv2 client
 	if err := (&controllers.TargetGroupBindingReconciler{
 		Client:      mgr.GetClient(),
-		Elbv2Client: elbClient,
+		Elbv2Client: elbClient, // Your AWS client
 	}).SetupWithManager(mgr); err != nil {
-		fmt.Fprintf(os.Stderr, "unable to create controller, %v", err)
+		fmt.Fprintf(os.Stderr, "Unable to create TargetGroupBinding controller: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Start the manager and block until it exits
+	// Start the manager (this blocks until the manager exits)
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		fmt.Fprintf(os.Stderr, "unable to run the manager, %v", err)
+		fmt.Fprintf(os.Stderr, "Unable to run manager: %v\n", err)
 		os.Exit(1)
 	}
 }
