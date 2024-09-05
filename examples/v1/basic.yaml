@@ -1,0 +1,8 @@
+apiVersion: ryangraham.internal/v1
+kind: TargetGroupBinding
+metadata:
+  name: example
+spec:
+  targetGroupARN: arn:aws:elasticloadbalancing:us-east-1:123456789123:targetgroup/example/ABCDEF123456
+  nodeSelector:
+    karpenter.sh/nodepool: default
