@@ -51,19 +51,19 @@ spec:
                   type: string
                   format: date-time
                   description: "The last time the target group was synchronized with Kubernetes nodes"
-  subresources:
-    status: {}
-  additionalPrinterColumns:
-    - name: Target Group ARN
-      type: string
-      jsonPath: .spec.targetGroupARN
-    - name: Total Nodes
-      type: integer
-      jsonPath: .status.totalNodes
-    - name: Registered Nodes
-      type: integer
-      jsonPath: .status.registeredNodes
-    - name: Last Sync
-      type: string
-      format: date-time
-      jsonPath: .status.lastSyncTime
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Target Group ARN
+          type: string
+          jsonPath: .spec.targetGroupARN
+        - name: Total Nodes
+          type: integer
+          jsonPath: .status.totalNodes
+        - name: Registered Nodes
+          type: integer
+          jsonPath: .status.registeredNodes
+        - name: Last Sync
+          type: string
+          format: date-time
+          jsonPath: .status.lastSyncTime
