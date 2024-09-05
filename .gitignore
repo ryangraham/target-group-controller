@@ -25,3 +25,5 @@ go.work.sum
 .env
 
 bin/
+
+examples/v1/private.yaml
