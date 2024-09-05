@@ -6,3 +6,6 @@ build:
 
 run:
 	go run cmd/controller/main.go
+
+image:
+	KO_DOCKER_REPO=docker.io/ryangraham/target-group-controller ko publish --bare --push=false ./cmd/controller
