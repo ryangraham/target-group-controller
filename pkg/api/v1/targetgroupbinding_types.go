@@ -100,5 +100,7 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&TargetGroupBinding{},
 		&TargetGroupBindingList{},
 	)
+	// Add the metav1 types to the scheme (important for status subresources)
+	metav1.AddToGroupVersion(scheme, GroupVersion)
 	return nil
 }

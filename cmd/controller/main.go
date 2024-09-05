@@ -12,6 +12,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+
 	// Import your custom API package
 	targetgroupv1 "github.com/ryangraham/target-group-controller/pkg/api/v1"
 
@@ -36,18 +38,24 @@ func main() {
 	// Create a new runtime Scheme
 	scheme := runtime.NewScheme()
 
+	// Register core Kubernetes types into the scheme
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to add core types to scheme: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register your custom TargetGroupBinding types into the scheme
+	if err := targetgroupv1.AddToScheme(scheme); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to add custom types to scheme: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Create a new Manager to manage the controllers
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme, // Attach the created scheme
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to create manager: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Register the TargetGroupBinding API types with the manager's scheme
-	if err := targetgroupv1.AddToScheme(mgr.GetScheme()); err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to register TargetGroupBinding scheme: %v\n", err)
 		os.Exit(1)
 	}
 
