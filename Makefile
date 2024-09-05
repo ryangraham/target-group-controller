@@ -8,4 +8,4 @@ run:
 	go1.23.0 run cmd/controller/main.go
 
 image:
-	KO_DOCKER_REPO=docker.io/ryangraham/target-group-controller ko publish --bare --push=false ./cmd/controller
+	KO_GO_PATH=go1.23.0 KO_DOCKER_REPO=docker.io/ryangraham/target-group-controller ko publish --bare ./cmd/controller
