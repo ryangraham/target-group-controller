@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -19,7 +20,7 @@ type TargetGroupBindingReconciler struct {
 	Elbv2Client *elasticloadbalancingv2.Client
 }
 
-// Reconcile function manages adding/removing nodes to/from the AWS target group
+// Reconcile function manages adding nodes to the AWS target group
 func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var tgb v1.TargetGroupBinding
 
@@ -41,16 +42,11 @@ func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	// Determine which nodes need to be added or removed from the target group
-	nodesToAdd, nodesToRemove := r.getTargetChanges(nodeList.Items, currentTargets)
+	// Determine which nodes need to be added to the target group
+	nodesToAdd := r.getNodesToAdd(nodeList.Items, currentTargets)
 
 	// Add nodes to the target group
 	if err := r.addNodesToTargetGroup(tgb.Spec.TargetGroupARN, nodesToAdd); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// Remove nodes from the target group
-	if err := r.removeNodesFromTargetGroup(tgb.Spec.TargetGroupARN, nodesToRemove); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -69,45 +65,57 @@ func (r *TargetGroupBindingReconciler) getTargetGroupTargets(targetGroupARN stri
 	return result.TargetHealthDescriptions, nil
 }
 
-// getTargetChanges compares the node list with the current targets to determine nodes to add and remove
-func (r *TargetGroupBindingReconciler) getTargetChanges(nodes []corev1.Node, targets []elbv2types.TargetHealthDescription) (nodesToAdd []corev1.Node, nodesToRemove []elbv2types.TargetDescription) {
-	nodeIPMap := make(map[string]bool)
+// getNodesToAdd compares the node list with the current targets to determine nodes to add
+func (r *TargetGroupBindingReconciler) getNodesToAdd(nodes []corev1.Node, targets []elbv2types.TargetHealthDescription) []corev1.Node {
+	var nodesToAdd []corev1.Node
 	for _, node := range nodes {
-		nodeIP := node.Status.Addresses[0].Address
-		nodeIPMap[nodeIP] = true
-		if !r.isNodeInTargetGroup(nodeIP, targets) {
+		instanceID := getInstanceIDFromNode(node)
+		if instanceID == "" {
+			continue
+		}
+		if !r.isNodeInTargetGroup(instanceID, targets) {
 			nodesToAdd = append(nodesToAdd, node)
 		}
 	}
-
-	for _, target := range targets {
-		if _, exists := nodeIPMap[*target.Target.Id]; !exists {
-			nodesToRemove = append(nodesToRemove, *target.Target)
-		}
-	}
-
-	return nodesToAdd, nodesToRemove
+	return nodesToAdd
 }
 
 // isNodeInTargetGroup checks if a node is already a target in the target group
-func (r *TargetGroupBindingReconciler) isNodeInTargetGroup(nodeIP string, targets []elbv2types.TargetHealthDescription) bool {
+func (r *TargetGroupBindingReconciler) isNodeInTargetGroup(instanceID string, targets []elbv2types.TargetHealthDescription) bool {
 	for _, target := range targets {
-		if *target.Target.Id == nodeIP {
+		if *target.Target.Id == instanceID {
 			return true
 		}
 	}
 	return false
 }
 
-// addNodesToTargetGroup adds nodes to the target group
+// getInstanceIDFromNode extracts the EC2 instance ID from the node object
+func getInstanceIDFromNode(node corev1.Node) string {
+	providerID := node.Spec.ProviderID
+	// Check if the providerID contains 'aws://'
+	if strings.HasPrefix(providerID, "aws://") {
+		// Split by '/' and return the last part, which is the instance ID
+		parts := strings.Split(providerID, "/")
+		if len(parts) > 0 {
+			return parts[len(parts)-1]
+		}
+	}
+	return ""
+}
+
+// addNodesToTargetGroup adds nodes (by instance ID) to the target group
 func (r *TargetGroupBindingReconciler) addNodesToTargetGroup(targetGroupARN string, nodes []corev1.Node) error {
 	if len(nodes) == 0 {
 		return nil
 	}
 	targets := []elbv2types.TargetDescription{}
 	for _, node := range nodes {
-		nodeIP := node.Status.Addresses[0].Address
-		targets = append(targets, elbv2types.TargetDescription{Id: aws.String(nodeIP)})
+		instanceID := getInstanceIDFromNode(node)
+		if instanceID == "" {
+			continue
+		}
+		targets = append(targets, elbv2types.TargetDescription{Id: aws.String(instanceID)})
 	}
 	input := &elasticloadbalancingv2.RegisterTargetsInput{
 		TargetGroupArn: aws.String(targetGroupARN),
@@ -117,24 +125,7 @@ func (r *TargetGroupBindingReconciler) addNodesToTargetGroup(targetGroupARN stri
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Added nodes to target group %s\n", targetGroupARN)
-	return nil
-}
-
-// removeNodesFromTargetGroup removes nodes from the target group
-func (r *TargetGroupBindingReconciler) removeNodesFromTargetGroup(targetGroupARN string, targets []elbv2types.TargetDescription) error {
-	if len(targets) == 0 {
-		return nil
-	}
-	input := &elasticloadbalancingv2.DeregisterTargetsInput{
-		TargetGroupArn: aws.String(targetGroupARN),
-		Targets:        targets,
-	}
-	_, err := r.Elbv2Client.DeregisterTargets(context.TODO(), input)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("Removed nodes from target group %s\n", targetGroupARN)
+	fmt.Printf("Added instance IDs to target group %s\n", targetGroupARN)
 	return nil
 }
 
