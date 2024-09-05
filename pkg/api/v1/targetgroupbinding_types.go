@@ -81,7 +81,7 @@ func (in *TargetGroupBindingList) DeepCopyInto(out *TargetGroupBindingList) {
 
 // GroupVersion is the group and version used to register these objects.
 var GroupVersion = schema.GroupVersion{
-	Group:   "custom.example.com", // Replace with your group
+	Group:   "ryangraham.internal",
 	Version: "v1",
 }
 
