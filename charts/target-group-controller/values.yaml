@@ -59,12 +59,12 @@ resources:
 
 livenessProbe:
   httpGet:
-    path: /
-    port: http
+    path: /healthz
+    port: 8081
 readinessProbe:
   httpGet:
-    path: /
-    port: http
+    path: /readyz
+    port: 8081
 
 # Additional volumes on the output Deployment definition.
 volumes: []

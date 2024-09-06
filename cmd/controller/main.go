@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -52,10 +53,21 @@ func main() {
 
 	// Create a new Manager to manage the controllers
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: scheme, // Attach the created scheme
+		Scheme:                 scheme, // Attach the created scheme
+		HealthProbeBindAddress: ":8081",
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to create manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to set up health check: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to set up readiness check: %v\n", err)
 		os.Exit(1)
 	}
 
