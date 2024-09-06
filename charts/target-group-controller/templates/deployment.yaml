@@ -5,9 +5,7 @@ metadata:
   labels:
     {{- include "target-group-controller.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
       {{- include "target-group-controller.selectorLabels" . | nindent 6 }}

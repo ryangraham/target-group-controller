@@ -27,3 +27,6 @@ helm-upgrade:
 
 helm-uninstall:
 	helm uninstall target-group-controller
+
+helm-lint:
+	helm lint --strict charts/target-group-controller
