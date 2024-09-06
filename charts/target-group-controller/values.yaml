@@ -5,10 +5,9 @@
 replicaCount: 1
 
 image:
-  repository: nginx
-  pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  repository: ryangraham/target-group-controller
+  pullPolicy: Always
+  tag: "latest" # TODO: fix with actual release versions later
 
 imagePullSecrets: []
 nameOverride: ""
