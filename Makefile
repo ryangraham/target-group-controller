@@ -9,3 +9,12 @@ run:
 
 image:
 	KO_GO_PATH=go1.23.0 KO_DOCKER_REPO=docker.io/ryangraham/target-group-controller ko publish --bare ./cmd/controller
+
+image-local:
+	KO_GO_PATH=go1.23.0 KO_DOCKER_REPO=docker.io/ryangraham/target-group-controller ko publish --push=false --bare ./cmd/controller
+
+crds:
+	kubectl apply -f pkg/api/crds/targetgroupbindings.yaml
+
+example:
+	kubectl apply -f examples/v1/private.yaml
