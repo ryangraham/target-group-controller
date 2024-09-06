@@ -20,7 +20,8 @@ example:
 	kubectl apply -f examples/v1/private.yaml
 
 helm-install:
-	helm install target-group-controller ./charts/target-group-controller
+	helm install target-group-controller ./charts/target-group-controller \
+      --set serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn=$$CONTROLLER_ROLE_ARN
 
 helm-upgrade:
 	helm upgrade target-group-controller ./charts/target-group-controller
