@@ -18,3 +18,12 @@ crds:
 
 example:
 	kubectl apply -f examples/v1/private.yaml
+
+helm-install:
+	helm install target-group-controller ./charts/target-group-controller
+
+helm-upgrade:
+	helm upgrade target-group-controller ./charts/target-group-controller
+
+helm-uninstall:
+	helm uninstall target-group-controller
