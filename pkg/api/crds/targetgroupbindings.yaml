@@ -22,48 +22,62 @@ spec:
             spec:
               type: object
               properties:
-                targetGroupARN:
-                  type: string
-                  description: "The ARN of the AWS target group"
-                  x-kubernetes-validations:
-                    - rule: "self.startsWith('arn:')"
-                      message: "TargetGroupARN must be a valid AWS ARN."
-                nodeSelector:
+                serviceRef:
                   type: object
-                  additionalProperties:
-                    type: string
-                  description: "Node selector for matching nodes"
+                  description: "Reference to the Kubernetes service whose endpoints should be registered in the target group"
+                  properties:
+                    name:
+                      type: string
+                      description: "Name of the service to be referenced"
+                    namespace:
+                      type: string
+                      description: "Namespace of the service to be referenced"
+                  required:
+                    - name
+                    - namespace
+
+                targetGroupSelector:
+                  type: object
+                  description: "Selector to find the AWS target group by tags"
+                  properties:
+                    tags:
+                      type: object
+                      additionalProperties:
+                        type: string
+                      description: "Map of AWS tag keys and values used to select the target group"
+                  required:
+                    - tags
+              required:
+                - serviceRef
+                - targetGroupSelector
+
             status:
               type: object
               properties:
-                currentNodes:
-                  type: array
-                  items:
-                    type: string
-                  description: "List of nodes currently registered in the target group"
-                totalNodes:
-                  type: integer
-                  description: "Total number of nodes matching the node selector"
-                registeredNodes:
-                  type: integer
-                  description: "Number of nodes currently registered in the target group"
+                targetGroupARN:
+                  type: string
+                  description: "ARN of the AWS target group that was selected"
                 lastSyncTime:
                   type: string
                   format: date-time
-                  description: "The last time the target group was synchronized with Kubernetes nodes"
-      subresources:
-        status: {}
-      additionalPrinterColumns:
-        - name: Target Group ARN
-          type: string
-          jsonPath: .spec.targetGroupARN
-        - name: Total Nodes
-          type: integer
-          jsonPath: .status.totalNodes
-        - name: Registered Nodes
-          type: integer
-          jsonPath: .status.registeredNodes
-        - name: Last Sync
-          type: string
-          format: date-time
-          jsonPath: .status.lastSyncTime
+                  description: "Timestamp of the last successful sync"
+                registeredIPs:
+                  type: array
+                  description: "List of IPs that are currently registered in the target group"
+                  items:
+                    type: string
+                    format: ipv4
+              required:
+                - targetGroupARN
+                - lastSyncTime
+  additionalPrinterColumns:
+    - name: Service
+      type: string
+      jsonPath: .spec.serviceRef.name
+    - name: Target Group ARN
+      type: string
+      jsonPath: .status.targetGroupARN
+    - name: Last Sync
+      type: string
+      format: date-time
+      jsonPath: .status.lastSyncTime

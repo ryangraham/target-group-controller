@@ -3,13 +3,16 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
+	rgtatypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	v1 "github.com/ryangraham/target-group-controller/pkg/api/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -17,10 +20,12 @@ import (
 // TargetGroupBindingReconciler reconciles a TargetGroupBinding object
 type TargetGroupBindingReconciler struct {
 	client.Client
-	Elbv2Client *elasticloadbalancingv2.Client
+	Elbv2Client           *elasticloadbalancingv2.Client
+	ResourceTaggingClient *resourcegroupstaggingapi.Client
+	Scheme                *runtime.Scheme
 }
 
-// Reconcile function manages adding nodes to the AWS target group
+// Reconcile is the main logic for the controller
 func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var tgb v1.TargetGroupBinding
 
@@ -29,104 +34,106 @@ func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// List all nodes matching the nodeSelector
-	nodeList := &corev1.NodeList{}
-	nodeSelector := client.MatchingLabels(tgb.Spec.NodeSelector)
-	if err := r.List(ctx, nodeList, nodeSelector); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// Get the current targets in the AWS target group
-	currentTargets, err := r.getTargetGroupTargets(tgb.Spec.TargetGroupARN)
+	// Step 1: Find the Target Group using tags
+	targetGroupARN, err := r.findTargetGroupByTags(ctx, tgb.Spec.TargetGroupSelector.Tags)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to find target group: %w", err)
 	}
 
-	// Determine which nodes need to be added to the target group
-	nodesToAdd := r.getNodesToAdd(nodeList.Items, currentTargets)
+	// Step 2: Get the service endpoints (IPs) to register
+	serviceIPs, err := r.getServiceEndpoints(ctx, tgb.Spec.ServiceRef.Name, tgb.Spec.ServiceRef.Namespace)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get service endpoints: %w", err)
+	}
 
-	// Add nodes to the target group
-	if err := r.addNodesToTargetGroup(tgb.Spec.TargetGroupARN, nodesToAdd); err != nil {
+	// Step 3: Register IPs with the target group
+	if err := r.registerIPsWithTargetGroup(ctx, targetGroupARN, serviceIPs); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to register IPs: %w", err)
+	}
+
+	// Update the status with the Target Group ARN and registered IPs
+	tgb.Status.TargetGroupARN = targetGroupARN
+	tgb.Status.RegisteredIPs = serviceIPs
+	tgb.Status.LastSyncTime = metav1.Now()
+
+	if err := r.Status().Update(ctx, &tgb); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
-// getTargetGroupTargets fetches the current targets in the AWS target group
-func (r *TargetGroupBindingReconciler) getTargetGroupTargets(targetGroupARN string) ([]elbv2types.TargetHealthDescription, error) {
-	input := &elasticloadbalancingv2.DescribeTargetHealthInput{
-		TargetGroupArn: aws.String(targetGroupARN),
+// findTargetGroupByTags finds a target group by the specified tags using the resourcegroupstaggingapi
+func (r *TargetGroupBindingReconciler) findTargetGroupByTags(ctx context.Context, tags map[string]string) (string, error) {
+	// Convert the tags to the format required by resourcegroupstaggingapi
+	var tagFilters []rgtatypes.TagFilter
+	for key, value := range tags {
+		tagFilters = append(tagFilters, rgtatypes.TagFilter{
+			Key:    aws.String(key),
+			Values: []string{value},
+		})
 	}
-	result, err := r.Elbv2Client.DescribeTargetHealth(context.TODO(), input)
+
+	input := &resourcegroupstaggingapi.GetResourcesInput{
+		TagFilters:          tagFilters,
+		ResourceTypeFilters: []string{"elasticloadbalancing:targetgroup"},
+	}
+
+	// Use the resourcegroupstaggingapi client to find resources by tag
+	result, err := r.ResourceTaggingClient.GetResources(ctx, input)
 	if err != nil {
+		return "", err
+	}
+
+	if len(result.ResourceTagMappingList) == 0 {
+		return "", fmt.Errorf("no target groups found with matching tags")
+	}
+
+	// Extract the target group ARN
+	targetGroupARN := aws.ToString(result.ResourceTagMappingList[0].ResourceARN)
+	return targetGroupARN, nil
+}
+
+// getServiceEndpoints fetches the IPs of the service endpoints
+func (r *TargetGroupBindingReconciler) getServiceEndpoints(ctx context.Context, serviceName string, namespace string) ([]string, error) {
+	var svc corev1.Service
+	if err := r.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, &svc); err != nil {
 		return nil, err
 	}
-	return result.TargetHealthDescriptions, nil
-}
 
-// getNodesToAdd compares the node list with the current targets to determine nodes to add
-func (r *TargetGroupBindingReconciler) getNodesToAdd(nodes []corev1.Node, targets []elbv2types.TargetHealthDescription) []corev1.Node {
-	var nodesToAdd []corev1.Node
-	for _, node := range nodes {
-		instanceID := getInstanceIDFromNode(node)
-		if instanceID == "" {
-			continue
-		}
-		if !r.isNodeInTargetGroup(instanceID, targets) {
-			nodesToAdd = append(nodesToAdd, node)
+	var endpoints corev1.Endpoints
+	if err := r.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, &endpoints); err != nil {
+		return nil, err
+	}
+
+	var ips []string
+	for _, subset := range endpoints.Subsets {
+		for _, address := range subset.Addresses {
+			ips = append(ips, address.IP)
 		}
 	}
-	return nodesToAdd
+
+	return ips, nil
 }
 
-// isNodeInTargetGroup checks if a node is already a target in the target group
-func (r *TargetGroupBindingReconciler) isNodeInTargetGroup(instanceID string, targets []elbv2types.TargetHealthDescription) bool {
-	for _, target := range targets {
-		if *target.Target.Id == instanceID {
-			return true
-		}
-	}
-	return false
-}
-
-// getInstanceIDFromNode extracts the EC2 instance ID from the node object
-func getInstanceIDFromNode(node corev1.Node) string {
-	providerID := node.Spec.ProviderID
-	// Check if the providerID contains 'aws://'
-	if strings.HasPrefix(providerID, "aws://") {
-		// Split by '/' and return the last part, which is the instance ID
-		parts := strings.Split(providerID, "/")
-		if len(parts) > 0 {
-			return parts[len(parts)-1]
-		}
-	}
-	return ""
-}
-
-// addNodesToTargetGroup adds nodes (by instance ID) to the target group
-func (r *TargetGroupBindingReconciler) addNodesToTargetGroup(targetGroupARN string, nodes []corev1.Node) error {
-	if len(nodes) == 0 {
+// registerIPsWithTargetGroup registers IP addresses as targets in the specified target group
+func (r *TargetGroupBindingReconciler) registerIPsWithTargetGroup(ctx context.Context, targetGroupARN string, ips []string) error {
+	if len(ips) == 0 {
 		return nil
 	}
-	targets := []elbv2types.TargetDescription{}
-	for _, node := range nodes {
-		instanceID := getInstanceIDFromNode(node)
-		if instanceID == "" {
-			continue
-		}
-		targets = append(targets, elbv2types.TargetDescription{Id: aws.String(instanceID)})
+
+	var targets []elbv2types.TargetDescription
+	for _, ip := range ips {
+		targets = append(targets, elbv2types.TargetDescription{
+			Id: aws.String(ip),
+		})
 	}
-	input := &elasticloadbalancingv2.RegisterTargetsInput{
+
+	_, err := r.Elbv2Client.RegisterTargets(ctx, &elasticloadbalancingv2.RegisterTargetsInput{
 		TargetGroupArn: aws.String(targetGroupARN),
 		Targets:        targets,
-	}
-	_, err := r.Elbv2Client.RegisterTargets(context.TODO(), input)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("Added instance IDs to target group %s\n", targetGroupARN)
-	return nil
+	})
+	return err
 }
 
 // SetupWithManager sets up the controller with the Manager
