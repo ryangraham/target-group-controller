@@ -1,8 +1,9 @@
 apiVersion: ryangraham.internal/v1
 kind: TargetGroupBinding
 metadata:
-  name: example
+  name: gateway-public
 spec:
-  targetGroupARN: arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/example/ABCDEF123456
-  nodeSelector:
-    karpenter.sh/nodepool: default
+  serviceRef:
+    name: gateway-public-istio
+    namespace: istio-system
+  targetGroupName: mycluster-gateway-public
