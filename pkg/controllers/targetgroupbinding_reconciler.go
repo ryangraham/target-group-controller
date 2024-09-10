@@ -7,8 +7,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
-	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
-	rgtatypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	v1 "github.com/ryangraham/target-group-controller/pkg/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,9 +18,8 @@ import (
 // TargetGroupBindingReconciler reconciles a TargetGroupBinding object
 type TargetGroupBindingReconciler struct {
 	client.Client
-	Elbv2Client           *elasticloadbalancingv2.Client
-	ResourceTaggingClient *resourcegroupstaggingapi.Client
-	Scheme                *runtime.Scheme
+	Elbv2Client *elasticloadbalancingv2.Client
+	Scheme      *runtime.Scheme
 }
 
 // Reconcile is the main logic for the controller
@@ -34,8 +31,8 @@ func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Step 1: Find the Target Group using tags
-	targetGroupARN, err := r.findTargetGroupByTags(ctx, tgb.Spec.TargetGroupSelector.Tags)
+	// Step 1: Find the Target Group by name
+	targetGroupARN, err := r.findTargetGroupByName(ctx, tgb.Spec.TargetGroupName)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to find target group: %w", err)
 	}
@@ -63,35 +60,24 @@ func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{}, nil
 }
 
-// findTargetGroupByTags finds a target group by the specified tags using the resourcegroupstaggingapi
-func (r *TargetGroupBindingReconciler) findTargetGroupByTags(ctx context.Context, tags map[string]string) (string, error) {
-	// Convert the tags to the format required by resourcegroupstaggingapi
-	var tagFilters []rgtatypes.TagFilter
-	for key, value := range tags {
-		tagFilters = append(tagFilters, rgtatypes.TagFilter{
-			Key:    aws.String(key),
-			Values: []string{value},
-		})
+// findTargetGroupByName finds a target group by the specified name
+func (r *TargetGroupBindingReconciler) findTargetGroupByName(ctx context.Context, targetGroupName string) (string, error) {
+	input := &elasticloadbalancingv2.DescribeTargetGroupsInput{
+		Names: []string{targetGroupName},
 	}
 
-	input := &resourcegroupstaggingapi.GetResourcesInput{
-		TagFilters:          tagFilters,
-		ResourceTypeFilters: []string{"elasticloadbalancing:targetgroup"},
-	}
-
-	// Use the resourcegroupstaggingapi client to find resources by tag
-	result, err := r.ResourceTaggingClient.GetResources(ctx, input)
+	// Describe the target group by name
+	result, err := r.Elbv2Client.DescribeTargetGroups(ctx, input)
 	if err != nil {
 		return "", err
 	}
 
-	if len(result.ResourceTagMappingList) == 0 {
-		return "", fmt.Errorf("no target groups found with matching tags")
+	if len(result.TargetGroups) == 0 {
+		return "", fmt.Errorf("no target groups found with name %s", targetGroupName)
 	}
 
-	// Extract the target group ARN
-	targetGroupARN := aws.ToString(result.ResourceTagMappingList[0].ResourceARN)
-	return targetGroupARN, nil
+	// Return the first matched target group ARN
+	return aws.ToString(result.TargetGroups[0].TargetGroupArn), nil
 }
 
 // getServiceEndpoints fetches the IPs of the service endpoints

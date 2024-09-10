@@ -27,44 +27,16 @@ func (in *ServiceRef) DeepCopy() *ServiceRef {
 	return out
 }
 
-// TargetGroupSelector defines the tag-based selector to find the AWS target group
-type TargetGroupSelector struct {
-	Tags map[string]string `json:"tags"`
-}
-
-// DeepCopyInto copies the receiver and writes into out. in must be non-nil.
-func (in *TargetGroupSelector) DeepCopyInto(out *TargetGroupSelector) {
-	*out = *in
-	if in.Tags != nil {
-		in, out := &in.Tags, &out.Tags
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
-	}
-}
-
-// DeepCopy creates a new deepcopy of the receiver.
-func (in *TargetGroupSelector) DeepCopy() *TargetGroupSelector {
-	if in == nil {
-		return nil
-	}
-	out := new(TargetGroupSelector)
-	in.DeepCopyInto(out)
-	return out
-}
-
 // TargetGroupBindingSpec defines the desired state of TargetGroupBinding
 type TargetGroupBindingSpec struct {
-	ServiceRef          ServiceRef          `json:"serviceRef"`
-	TargetGroupSelector TargetGroupSelector `json:"targetGroupSelector"`
+	ServiceRef      ServiceRef `json:"serviceRef"`
+	TargetGroupName string     `json:"targetGroupName"`
 }
 
 // DeepCopyInto copies the receiver and writes into out. in must be non-nil.
 func (in *TargetGroupBindingSpec) DeepCopyInto(out *TargetGroupBindingSpec) {
 	*out = *in
 	in.ServiceRef.DeepCopyInto(&out.ServiceRef)
-	in.TargetGroupSelector.DeepCopyInto(&out.TargetGroupSelector)
 }
 
 // DeepCopy creates a new deepcopy of the receiver.
@@ -114,14 +86,6 @@ type TargetGroupBinding struct {
 	Status TargetGroupBindingStatus `json:"status,omitempty"`
 }
 
-// DeepCopyObject creates a new deepcopy of the receiver.
-func (in *TargetGroupBinding) DeepCopyObject() runtime.Object {
-	if c := in.DeepCopy(); c != nil {
-		return c
-	}
-	return nil
-}
-
 // DeepCopyInto copies the receiver and writes into out. in must be non-nil.
 func (in *TargetGroupBinding) DeepCopyInto(out *TargetGroupBinding) {
 	*out = *in
@@ -140,21 +104,19 @@ func (in *TargetGroupBinding) DeepCopy() *TargetGroupBinding {
 	return out
 }
 
-// +kubebuilder:object:root=true
+// DeepCopyObject creates a new deepcopy of the receiver as a runtime.Object.
+func (in *TargetGroupBinding) DeepCopyObject() runtime.Object {
+	if c := in.DeepCopy(); c != nil {
+		return c
+	}
+	return nil
+}
 
 // TargetGroupBindingList contains a list of TargetGroupBinding
 type TargetGroupBindingList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []TargetGroupBinding `json:"items"`
-}
-
-// DeepCopyObject creates a new deepcopy of the receiver.
-func (in *TargetGroupBindingList) DeepCopyObject() runtime.Object {
-	if c := in.DeepCopy(); c != nil {
-		return c
-	}
-	return nil
 }
 
 // DeepCopyInto copies the receiver and writes into out. in must be non-nil.
@@ -180,6 +142,13 @@ func (in *TargetGroupBindingList) DeepCopy() *TargetGroupBindingList {
 	return out
 }
 
+// DeepCopyObject creates a new deepcopy of the receiver as a runtime.Object.
+func (in *TargetGroupBindingList) DeepCopyObject() runtime.Object {
+	if c := in.DeepCopy(); c != nil {
+		return c
+	}
+	return nil
+}
 
 // GroupVersion is the group and version used to register these objects.
 var GroupVersion = schema.GroupVersion{
