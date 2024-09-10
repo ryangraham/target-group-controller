@@ -62,17 +62,17 @@ spec:
               required:
                 - targetGroupARN
                 - lastSyncTime
-  additionalPrinterColumns:
-    - name: Service
-      type: string
-      jsonPath: .spec.serviceRef.name
-    - name: Target Group Name
-      type: string
-      jsonPath: .spec.targetGroupName
-    - name: Target Group ARN
-      type: string
-      jsonPath: .status.targetGroupARN
-    - name: Last Sync
-      type: string
-      format: date-time
-      jsonPath: .status.lastSyncTime
+      additionalPrinterColumns:
+        - name: Service
+          type: string
+          jsonPath: .spec.serviceRef.name
+        - name: Target Group Name
+          type: string
+          jsonPath: .spec.targetGroupName
+        - name: Target Group ARN
+          type: string
+          jsonPath: .status.targetGroupARN
+        - name: Last Sync
+          type: string
+          format: date-time
+          jsonPath: .status.lastSyncTime
