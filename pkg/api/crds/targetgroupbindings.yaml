@@ -42,7 +42,6 @@ spec:
               required:
                 - serviceRef
                 - targetGroupName
-
             status:
               type: object
               properties:
@@ -62,6 +61,8 @@ spec:
               required:
                 - targetGroupARN
                 - lastSyncTime
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: Service
           type: string
