@@ -10,7 +10,6 @@ import (
 	v1 "github.com/ryangraham/target-group-controller/pkg/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -19,7 +18,6 @@ import (
 type TargetGroupBindingReconciler struct {
 	client.Client
 	Elbv2Client *elasticloadbalancingv2.Client
-	Scheme      *runtime.Scheme
 }
 
 // Reconcile is the main logic for the controller

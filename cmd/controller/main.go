@@ -64,7 +64,6 @@ func main() {
 	// Setup the reconciler for TargetGroupBinding
 	if err := (&controllers.TargetGroupBindingReconciler{
 		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
 		Elbv2Client: elbv2Client,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetGroupBinding")
