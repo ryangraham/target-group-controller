@@ -5,7 +5,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
-	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -35,7 +34,6 @@ func main() {
 	awsConfig := aws.Config{} // Initialize AWS config here
 
 	elbv2Client := elasticloadbalancingv2.NewFromConfig(awsConfig)
-	taggingClient := resourcegroupstaggingapi.NewFromConfig(awsConfig)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -59,10 +57,9 @@ func main() {
 
 	// Setup the reconciler for TargetGroupBinding
 	if err := (&controllers.TargetGroupBindingReconciler{
-		Client:                mgr.GetClient(),
-		Scheme:                mgr.GetScheme(),
-		Elbv2Client:           elbv2Client,
-		ResourceTaggingClient: taggingClient,
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Elbv2Client: elbv2Client,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetGroupBinding")
 		os.Exit(1)
