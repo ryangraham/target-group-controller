@@ -1,9 +1,10 @@
 package main
 
 import (
+	"context"
 	"os"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -31,7 +32,12 @@ func init() {
 func main() {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	awsConfig := aws.Config{} // Initialize AWS config here
+	// Load AWS configuration (region, credentials, etc.)
+	awsConfig, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		setupLog.Error(err, "Unable to load AWS config")
+		os.Exit(1)
+	}
 
 	elbv2Client := elasticloadbalancingv2.NewFromConfig(awsConfig)
 
