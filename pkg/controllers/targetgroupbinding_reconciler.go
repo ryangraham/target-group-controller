@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 )
 
 // TargetGroupBindingReconciler reconciles a TargetGroupBinding object
@@ -41,9 +42,26 @@ func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get service endpoints: %w", err)
 	}
 
-	// Step 3: Register IPs with the target group
-	if err := r.registerIPsWithTargetGroup(ctx, targetGroupARN, serviceIPs); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to register IPs: %w", err)
+	// Step 3: Get currently registered targets
+	registeredIPs, err := r.getRegisteredTargets(ctx, targetGroupARN)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get registered targets: %w", err)
+	}
+
+	// Step 4: Deregister old targets not in the new service IPs
+	toDeregister := diff(registeredIPs, serviceIPs)
+	if len(toDeregister) > 0 {
+		if err := r.deregisterIPsFromTargetGroup(ctx, targetGroupARN, toDeregister); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to deregister IPs: %w", err)
+		}
+	}
+
+	// Step 5: Register new IPs not already registered
+	toRegister := diff(serviceIPs, registeredIPs)
+	if len(toRegister) > 0 {
+		if err := r.registerIPsWithTargetGroup(ctx, targetGroupARN, toRegister); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to register IPs: %w", err)
+		}
 	}
 
 	// Update the status with the Target Group ARN and registered IPs
@@ -56,6 +74,62 @@ func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// getRegisteredTargets gets the currently registered IPs in the target group
+func (r *TargetGroupBindingReconciler) getRegisteredTargets(ctx context.Context, targetGroupARN string) ([]string, error) {
+	input := &elasticloadbalancingv2.DescribeTargetHealthInput{
+		TargetGroupArn: aws.String(targetGroupARN),
+	}
+
+	result, err := r.Elbv2Client.DescribeTargetHealth(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	var ips []string
+	for _, targetHealth := range result.TargetHealthDescriptions {
+		ips = append(ips, aws.ToString(targetHealth.Target.Id))
+	}
+
+	return ips, nil
+}
+
+// deregisterIPsFromTargetGroup deregisters IP addresses from the specified target group
+func (r *TargetGroupBindingReconciler) deregisterIPsFromTargetGroup(ctx context.Context, targetGroupARN string, ips []string) error {
+	if len(ips) == 0 {
+		return nil
+	}
+
+	var targets []elbv2types.TargetDescription
+	for _, ip := range ips {
+		targets = append(targets, elbv2types.TargetDescription{
+			Id: aws.String(ip),
+		})
+	}
+
+	_, err := r.Elbv2Client.DeregisterTargets(ctx, &elasticloadbalancingv2.DeregisterTargetsInput{
+		TargetGroupArn: aws.String(targetGroupARN),
+		Targets:        targets,
+	})
+	return err
+}
+
+// diff returns the elements in `a` that are not in `b`
+func diff(a, b []string) []string {
+	set := make(map[string]struct{}, len(b))
+	for _, v := range b {
+		set[v] = struct{}{}
+	}
+
+	var diff []string
+	for _, v := range a {
+		if _, found := set[v]; !found {
+			diff = append(diff, v)
+		}
+	}
+
+	return diff
 }
 
 // findTargetGroupByName finds a target group by the specified name
@@ -124,5 +198,7 @@ func (r *TargetGroupBindingReconciler) registerIPsWithTargetGroup(ctx context.Co
 func (r *TargetGroupBindingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1.TargetGroupBinding{}).
+		// Watch for changes to Service Endpoints
+		Watches(&corev1.Endpoints{}, &handler.EnqueueRequestForObject{}).
 		Complete(r)
 }
