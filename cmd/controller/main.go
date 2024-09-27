@@ -61,10 +61,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	reconcilerLogger := ctrl.Log.WithName("Reconciler")
+
 	// Setup the reconciler for TargetGroupBinding
 	if err := (&controllers.TargetGroupBindingReconciler{
 		Client:      mgr.GetClient(),
 		Elbv2Client: elbv2Client,
+		Log:         reconcilerLogger,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetGroupBinding")
 		os.Exit(1)

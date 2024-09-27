@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/go-logr/logr"
 	v1 "github.com/ryangraham/target-group-controller/pkg/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,6 +21,7 @@ import (
 type TargetGroupBindingReconciler struct {
 	client.Client
 	Elbv2Client *elasticloadbalancingv2.Client
+	Log         logr.Logger
 }
 
 // Reconcile is the main logic for the controller
@@ -76,6 +78,8 @@ func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err := r.Status().Update(ctx, &tgb); err != nil {
 		return ctrl.Result{}, err
 	}
+
+	r.Log.Info("Successfully updated TargetGroupBinding", "name", req.NamespacedName, "registeredIPs", serviceIPs)
 
 	return ctrl.Result{RequeueAfter: RequeueIntervalSuccess}, nil
 }
