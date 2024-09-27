@@ -43,7 +43,9 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		HealthProbeBindAddress: ":8081", // Health check endpoint
+		HealthProbeBindAddress: ":8081",
+		LeaderElection:         true,
+		LeaderElectionID:       "target-group-controller-leader-election",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
