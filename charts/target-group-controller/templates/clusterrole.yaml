@@ -31,3 +31,19 @@ rules:
       - get
       - list
       - watch
+      - apiGroups:
+        - "coordination.k8s.io"
+        resources:
+        - leases
+        verbs:
+        - create
+  - apiGroups:
+    - "coordination.k8s.io"
+    resources:
+    - leases
+    resourceNames:
+    - target-group-controller-leader
+    verbs:
+    - get
+    - update
+    - patch

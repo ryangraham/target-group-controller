@@ -45,7 +45,7 @@ func main() {
 		Scheme:                 scheme,
 		HealthProbeBindAddress: ":8081",
 		LeaderElection:         true,
-		LeaderElectionID:       "target-group-controller-leader-election",
+		LeaderElectionID:       "target-group-controller-leader",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
