@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -25,34 +26,37 @@ type TargetGroupBindingReconciler struct {
 func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var tgb v1.TargetGroupBinding
 
+	RequeueIntervalSuccess := 10 * time.Minute
+	RequeueIntervalError := 1 * time.Minute
+
 	// Fetch the TargetGroupBinding resource
 	if err := r.Get(ctx, req.NamespacedName, &tgb); err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{RequeueAfter: RequeueIntervalError}, client.IgnoreNotFound(err)
 	}
 
 	// Step 1: Find the Target Group by name
 	targetGroupARN, err := r.findTargetGroupByName(ctx, tgb.Spec.TargetGroupName)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to find target group: %w", err)
+		return ctrl.Result{RequeueAfter: RequeueIntervalError}, fmt.Errorf("failed to find target group: %w", err)
 	}
 
 	// Step 2: Get the service endpoints (IPs) to register
 	serviceIPs, err := r.getServiceEndpoints(ctx, tgb.Spec.ServiceRef.Name, tgb.Spec.ServiceRef.Namespace)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get service endpoints: %w", err)
+		return ctrl.Result{RequeueAfter: RequeueIntervalError}, fmt.Errorf("failed to get service endpoints: %w", err)
 	}
 
 	// Step 3: Get currently registered targets
 	registeredIPs, err := r.getRegisteredTargets(ctx, targetGroupARN)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get registered targets: %w", err)
+		return ctrl.Result{RequeueAfter: RequeueIntervalError}, fmt.Errorf("failed to get registered targets: %w", err)
 	}
 
 	// Step 4: Deregister old targets not in the new service IPs
 	toDeregister := diff(registeredIPs, serviceIPs)
 	if len(toDeregister) > 0 {
 		if err := r.deregisterIPsFromTargetGroup(ctx, targetGroupARN, toDeregister); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to deregister IPs: %w", err)
+			return ctrl.Result{RequeueAfter: RequeueIntervalError}, fmt.Errorf("failed to deregister IPs: %w", err)
 		}
 	}
 
@@ -60,7 +64,7 @@ func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.R
 	toRegister := diff(serviceIPs, registeredIPs)
 	if len(toRegister) > 0 {
 		if err := r.registerIPsWithTargetGroup(ctx, targetGroupARN, toRegister); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to register IPs: %w", err)
+			return ctrl.Result{RequeueAfter: RequeueIntervalError}, fmt.Errorf("failed to register IPs: %w", err)
 		}
 	}
 
@@ -73,7 +77,7 @@ func (r *TargetGroupBindingReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: RequeueIntervalSuccess}, nil
 }
 
 // getRegisteredTargets gets the currently registered IPs in the target group
